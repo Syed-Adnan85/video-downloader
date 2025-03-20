@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        form {
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 500px;
+        }
+        input[type="text"] {
+            padding: 10px;
+            width: calc(100% - 120px);
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        #videoPreview {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+        #videoThumbnail {
+            max-width: 100%;
+            height: auto;
+            max-height: 200px;
+            margin-bottom: 20px;
+        }
+        #downloadButton {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        #downloadButton:hover {
+            background-color: #0056b3;
+        }
+        #history {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            box-sizing: border-box;
+        }
+        .history-item button {
+            background-color: #dc3545;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            padding: 5px 10px;
+            box-sizing: border-box;
+        }
+        .history-item button:hover {
+            background-color: #c82333;
+        }
+        #qualitySelector {
+            margin-bottom: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        @media (max-width: 600px) {
+            input[type="text"] {
+                width: calc(100% - 100px);
+                margin-right: 5px;
+            }
+            button {
+                width: 100px;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Online Video Downloader</h1>
+    <form id="videoForm">
+        <input type="text" name="url" placeholder="Enter video URL" required>
+        <button type="submit">Get Video</button>
+    </form>
+    <div id="videoPreview" style="display: none;">
+        <h2 id="videoTitle"></h2>
+        <img id="videoThumbnail" alt="Video Thumbnail">
+        <select id="qualitySelector"></select>
+        <a id="downloadButton" href="#" download>Download Video</a>
+    </div>
+    <div id="history"></div>
+    <script>
+        document.getElementById('videoForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const url = e.target.url.value;
+            getVideo(url);
+        });
+
+        async function getVideo(url) {
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({ url })
+                });
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                document.getElementById('videoTitle').textContent = data.title;
+                document.getElementById('videoThumbnail').src = data.thumbnail;
+                const qualitySelector = document.getElementById('qualitySelector');
+                qualitySelector.innerHTML = '';
+                if (data.formats && data.formats.length > 0) {
+                    data.formats.forEach(format => {
+                        const option = document.createElement('option');
+                        option.value = format.url;
+                        option.textContent = format.quality;
+                        qualitySelector.appendChild(option);
+                    });
+                    document.getElementById('downloadButton').href = qualitySelector.value;
+                    qualitySelector.addEventListener('change', function () {
+                        document.getElementById('downloadButton').href = this.value;
+                    });
+                } else {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No available formats';
+                    qualitySelector.appendChild(option);
+                }
+                document.getElementById('videoPreview').style.display = 'block';
+                addToHistory(data.title, url);
+            } catch (error) {
+                console.error('Fetch error:', error);
+                alert('Error fetching video info. Please check the URL and try again.');
+            }
+        }
+
+        function addToHistory(title, url) {
+            let history = JSON.parse(localStorage.getItem('history')) || [];
+            if (!history.some(item => item.url === url)) {
+                history.push({ title, url });
+                localStorage.setItem('history', JSON.stringify(history));
+                renderHistory();
+            }
+        }
+
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('history')) || [];
+            const historyContainer = document.getElementById('history');
+            historyContainer.innerHTML = '';
+            history.forEach((item, index) => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+                historyItem.innerHTML = `
+                    <span onclick="openInApp('${item.url}')">${item.title}</span>
+                    <button onclick="deleteFromHistory(${index})">Delete</button>
+                `;
+                historyContainer.appendChild(historyItem);
+            });
+        }
+
+        function openInApp(url) {
+            document.querySelector('input[name="url"]').value = url;
+            getVideo(url);
+        }
+
+        function deleteFromHistory(index) {
+            let history = JSON.parse(localStorage.getItem('history')) || [];
+            history.splice(index, 1);
+            localStorage.setItem('history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        renderHistory();
+    </script>
+</body>
+</html>
