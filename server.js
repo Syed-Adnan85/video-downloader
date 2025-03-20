@@ -1,52 +1,52 @@
 const express = require('express');
+const { exec } = require('child_process');
 const path = require('path');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-const ytdlp = require('yt-dlp-exec');
 
-const app = express();
-const port = process.env.PORT || 3000;
+const app = express(); // ✅ Initialize 'app' BEFORE using it
+const port = process.env.PORT || 3000; // ✅ Use dynamic port for deployment
 
-app.use(cors());
+app.use(cors()); // ✅ Move 'cors' AFTER 'app' is initialized
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.post('/download', async (req, res) => {
+app.post('/download', (req, res) => {
     const videoURL = req.body.url;
-    console.log(`Received request for URL: ${videoURL}`);
     if (!videoURL) {
         return res.status(400).send('URL is required');
     }
 
-    try {
-        const info = await ytdlp(videoURL, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            noCallHome: true,
-            noCheckCertificate: true,
-        });
-        console.log('yt-dlp response:', info);
+    const command = process.platform === 'win32' ? 
+        `yt-dlp.exe -j "${videoURL}"` : `./yt-dlp -j "${videoURL}"`;
 
-        const formats = info.formats.map(format => ({
-            quality: format.format_note,
-            url: format.url
-        }));
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error('Error fetching video info:', stderr);
+            return res.status(400).send('Error fetching video info. Please check the URL and try again.');
+        }
 
-        res.json({
-            title: info.title,
-            thumbnail: info.thumbnail,
-            formats
-        });
+        try {
+            const info = JSON.parse(stdout);
+            const formats = info.formats ? info.formats.map(format => ({
+                quality: format.format_note,
+                url: format.url
+            })) : [];
 
-    } catch (error) {
-        console.error('yt-dlp error:', error);
-        res.status(500).json({ error: 'Failed to fetch video info' });
-    }
+            res.json({
+                title: info.title,
+                thumbnail: info.thumbnail,
+                formats
+            });
+
+        } catch (parseError) {
+            console.error('Error parsing video info:', parseError);
+            res.status(500).send('Error parsing video info');
+        }
+    });
 });
 
 app.listen(port, () => {
